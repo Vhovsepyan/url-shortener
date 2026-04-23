@@ -3,6 +3,7 @@ mod errors;
 mod handlers;
 mod models;
 mod state;
+mod service;
 
 use axum::{
     routing::{get, post},

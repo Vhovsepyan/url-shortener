@@ -1,48 +1,30 @@
-use axum::{
-    extract::{Json, Path, State},
-    response::Redirect,
-};
 use rand::{distributions::Alphanumeric, Rng};
 
 use crate::{
     errors::AppError,
-    models::{ShortenRequest, ShortenResponse},
     state::AppState,
 };
 
-pub async fn health() -> &'static str {
-    "OK"
+/// Handles the business logic for shortening a URL.
+pub fn shorten_url(state: &AppState, original_url: String) -> Result<String, AppError> {
+    validate_url(&original_url)?;
+
+    let length = state.config.code_length;
+    let code = insert_with_unique_code(state, original_url, length);
+
+    Ok(code)
 }
 
-pub async fn shorten(
-    State(state): State<AppState>,
-    Json(request): Json<ShortenRequest>,
-) -> Result<Json<ShortenResponse>, AppError> {
-    validate_url(&request.url)?;
-
-    let original_url = request.url;
-
-    let code = insert_with_unique_code(&state, original_url.clone(), state.config.code_length);
-
-    Ok(Json(ShortenResponse {
-        code: code.clone(),
-        short_url: format!("{}/{}", state.config.base_url, code),
-        original_url,
-    }))
-}
-
-pub async fn redirect(
-    State(state): State<AppState>,
-    Path(code): Path<String>,
-) -> Result<Redirect, AppError> {
+/// Handles the business logic for looking up a redirect.
+pub fn get_redirect(state: &AppState, code: &str) -> Result<String, AppError> {
     let store = state.store.read().unwrap();
 
-    if let Some(original_url) = store.get(&code) {
-        Ok(Redirect::temporary(original_url))
-    } else {
-        Err(AppError::ShortCodeNotFound)
-    }
+    // We clone the string so we don't hold a reference to the data inside the RwLock.
+    // This prevents keeping the read lock open longer than necessary.
+    store.get(code).cloned().ok_or(AppError::ShortCodeNotFound)
 }
+
+// Below are our private helper functions, completely hidden from the rest of the app.
 
 fn validate_url(url: &str) -> Result<(), AppError> {
     let trimmed = url.trim();
