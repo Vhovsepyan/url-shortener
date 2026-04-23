@@ -5,6 +5,7 @@ use axum::{
 };
 use serde::Serialize;
 use thiserror::Error;
+use tracing::error;
 
 #[derive(Debug, Error)]
 pub enum AppError {
@@ -26,9 +27,8 @@ impl IntoResponse for AppError {
         let (status, message) = match self {
             AppError::InvalidUrl => (StatusCode::BAD_REQUEST, self.to_string()),
             AppError::ShortCodeNotFound => (StatusCode::NOT_FOUND, self.to_string()),
-            AppError::DatabaseError(_) => {
-                // We log the real error to the console, but hide details from the user
-                eprintln!("DB Error: {:?}", self);
+            AppError::DatabaseError(err) => {
+                error!("Database error occurred: {:?}", err);
                 (StatusCode::INTERNAL_SERVER_ERROR, "Internal server error".to_string())
             }
         };

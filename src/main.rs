@@ -12,6 +12,7 @@ use axum::{
 };
 use sqlx::postgres::PgPoolOptions;
 use std::sync::Arc;
+use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 use crate::{
     config::AppConfig,
@@ -23,6 +24,16 @@ use crate::{
 #[tokio::main]
 async fn main() {
     dotenvy::dotenv().ok();
+
+    tracing_subscriber::registry()
+        .with(
+            tracing_subscriber::EnvFilter::try_from_default_env()
+                .unwrap_or_else(|_| "url_shortener=debug,axum=info".into()),
+        )
+        .with(tracing_subscriber::fmt::layer())
+        .init();
+
+    tracing::info!("Starting URL shortener application..."); // Our first log!
 
     let config = AppConfig::new();
 
