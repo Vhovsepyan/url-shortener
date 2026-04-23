@@ -1,6 +1,6 @@
 use rand::{distributions::Alphanumeric, Rng};
 use tracing::{info, instrument}; // Import tracing macros
-
+use redis::AsyncCommands;
 use crate::{errors::AppError, state::AppState};
 
 // This macro will automatically log whenever this function is called,
@@ -19,10 +19,23 @@ pub async fn shorten_url(state: &AppState, original_url: String) -> Result<Strin
 
 #[instrument(skip(state))]
 pub async fn get_redirect(state: &AppState, code: &str) -> Result<String, AppError> {
-    let result = state.repository.find_by_code(code).await?;
 
+    let mut redis_conn = state.redis.clone();
+
+    let cached_url: Result<String, redis::RedisError> = redis_conn.get(code).await;
+
+    if let Ok(url) = cached_url {
+        info!("Cache HIT for code: {}", code);
+        return Ok(url);
+    }
+
+    info!("Cache MISS for code: {}. Querying database...", code);
+
+
+    let result = state.repository.find_by_code(code).await?;
     match result {
         Some(url) => {
+            let _: Result<(), redis::RedisError> = redis_conn.set_ex(code, &url, 3600).await;
             info!("Found redirect for code: {}", code);
             Ok(url)
         }

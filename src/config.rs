@@ -6,6 +6,7 @@ pub struct AppConfig {
     pub base_url: String,
     pub code_length: usize,
     pub database_url: String,
+    pub redis_url: String,
 }
 
 impl AppConfig {
@@ -27,6 +28,9 @@ impl AppConfig {
             // Fail fast if the database URL is completely missing
             database_url: env::var("DATABASE_URL")
                 .expect("DATABASE_URL environment variable must be set"),
+
+            redis_url: env::var("REDIS_URL")
+                .expect("REDIS_URL environment variable must be set"),
         }
     }
 }

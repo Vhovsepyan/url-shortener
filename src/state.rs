@@ -7,4 +7,5 @@ pub struct AppState {
     // We now use dynamic dispatch (`dyn`) to point to anything that implements the trait
     pub repository: Arc<dyn UrlRepository>,
     pub config: AppConfig,
+    pub redis: redis::aio::MultiplexedConnection,
 }

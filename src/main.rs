@@ -37,14 +37,12 @@ async fn main() {
 
     let config = AppConfig::new();
 
-    // 1. Establish a connection pool to Postgres
     let pool = PgPoolOptions::new()
         .max_connections(5)
         .connect(&config.database_url)
         .await
         .expect("Failed to connect to Postgres");
 
-    // 2. Automatically create the table if it doesn't exist (great for development)
     sqlx::query(
         "CREATE TABLE IF NOT EXISTS urls (
             code VARCHAR(20) PRIMARY KEY,
@@ -55,12 +53,21 @@ async fn main() {
         .await
         .expect("Failed to initialize database table");
 
-    // 3. Inject the Postgres repository
     let repository = Arc::new(PostgresRepository::new(pool));
+
+    tracing::info!("Connecting to Redis...");
+    let redis_client = redis::Client::open(config.redis_url.clone())
+        .expect("Invalid Redis URL");
+
+    let redis_conn = redis_client
+        .get_multiplexed_async_connection()
+        .await
+        .expect("Failed to connect to Redis");
 
     let state = AppState {
         repository,
         config: config.clone(),
+        redis: redis_conn,
     };
 
     let app = Router::new()
