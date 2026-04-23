@@ -22,6 +22,8 @@ use crate::{
 
 #[tokio::main]
 async fn main() {
+    dotenvy::dotenv().ok();
+
     let config = AppConfig::new();
 
     // 1. Establish a connection pool to Postgres
