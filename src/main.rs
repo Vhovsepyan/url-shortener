@@ -2,32 +2,51 @@ mod config;
 mod errors;
 mod handlers;
 mod models;
-mod state;
+mod repository;
 mod service;
+mod state;
 
 use axum::{
     routing::{get, post},
     Router,
 };
-use std::{
-    collections::HashMap,
-    sync::{Arc, RwLock},
-};
+use sqlx::postgres::PgPoolOptions;
+use std::sync::Arc;
 
 use crate::{
     config::AppConfig,
     handlers::{health, redirect, shorten},
+    repository::PostgresRepository, // Changed from InMemoryRepository
     state::AppState,
 };
 
 #[tokio::main]
 async fn main() {
-    // Changed: configuration is now created centrally.
     let config = AppConfig::new();
 
-    // Changed: AppState now stores both the in-memory store and config.
+    // 1. Establish a connection pool to Postgres
+    let pool = PgPoolOptions::new()
+        .max_connections(5)
+        .connect(&config.database_url)
+        .await
+        .expect("Failed to connect to Postgres");
+
+    // 2. Automatically create the table if it doesn't exist (great for development)
+    sqlx::query(
+        "CREATE TABLE IF NOT EXISTS urls (
+            code VARCHAR(20) PRIMARY KEY,
+            original_url TEXT NOT NULL
+        )"
+    )
+        .execute(&pool)
+        .await
+        .expect("Failed to initialize database table");
+
+    // 3. Inject the Postgres repository
+    let repository = Arc::new(PostgresRepository::new(pool));
+
     let state = AppState {
-        store: Arc::new(RwLock::new(HashMap::new())),
+        repository,
         config: config.clone(),
     };
 
@@ -37,14 +56,11 @@ async fn main() {
         .route("/{code}", get(redirect))
         .with_state(state);
 
-    // Changed: bind address now comes from configuration.
     let listener = tokio::net::TcpListener::bind(&config.server_addr)
         .await
         .unwrap();
 
     println!("server running on {}", config.base_url);
 
-    axum::serve(listener, app)
-        .await
-        .unwrap();
+    axum::serve(listener, app).await.unwrap();
 }

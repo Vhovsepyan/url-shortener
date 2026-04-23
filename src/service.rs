@@ -1,54 +1,47 @@
 use rand::{distributions::Alphanumeric, Rng};
+use crate::{errors::AppError, state::AppState};
 
-use crate::{
-    errors::AppError,
-    state::AppState,
-};
-
-/// Handles the business logic for shortening a URL.
-pub fn shorten_url(state: &AppState, original_url: String) -> Result<String, AppError> {
+// Added async
+pub async fn shorten_url(state: &AppState, original_url: String) -> Result<String, AppError> {
     validate_url(&original_url)?;
 
     let length = state.config.code_length;
-    let code = insert_with_unique_code(state, original_url, length);
+    // Added .await
+    let code = insert_with_unique_code(state, original_url, length).await?;
 
     Ok(code)
 }
 
-/// Handles the business logic for looking up a redirect.
-pub fn get_redirect(state: &AppState, code: &str) -> Result<String, AppError> {
-    let store = state.store.read().unwrap();
-
-    // We clone the string so we don't hold a reference to the data inside the RwLock.
-    // This prevents keeping the read lock open longer than necessary.
-    store.get(code).cloned().ok_or(AppError::ShortCodeNotFound)
+// Added async
+pub async fn get_redirect(state: &AppState, code: &str) -> Result<String, AppError> {
+    state
+        .repository
+        .find_by_code(code)
+        .await? // Added .await
+        .ok_or(AppError::ShortCodeNotFound)
 }
-
-// Below are our private helper functions, completely hidden from the rest of the app.
 
 fn validate_url(url: &str) -> Result<(), AppError> {
     let trimmed = url.trim();
-
-    if trimmed.is_empty() {
+    if trimmed.is_empty() || !(trimmed.starts_with("http://") || trimmed.starts_with("https://")) {
         return Err(AppError::InvalidUrl);
     }
-
-    if !(trimmed.starts_with("http://") || trimmed.starts_with("https://")) {
-        return Err(AppError::InvalidUrl);
-    }
-
     Ok(())
 }
 
-fn insert_with_unique_code(state: &AppState, original_url: String, length: usize) -> String {
-    let mut store = state.store.write().unwrap();
-
+// Added async
+async fn insert_with_unique_code(
+    state: &AppState,
+    original_url: String,
+    length: usize,
+) -> Result<String, AppError> {
     loop {
         let code = generate_code(length);
+        // Added .await
+        let inserted = state.repository.save(code.clone(), original_url.clone()).await?;
 
-        if !store.contains_key(&code) {
-            store.insert(code.clone(), original_url);
-            return code;
+        if inserted {
+            return Ok(code);
         }
     }
 }
