@@ -10,6 +10,7 @@ use axum::{
     routing::{get, post},
     Router,
 };
+use axum_prometheus::PrometheusMetricLayer; // <-- 1. Import the layer
 use sqlx::postgres::PgPoolOptions;
 use std::sync::Arc;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
@@ -17,7 +18,7 @@ use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 use crate::{
     config::AppConfig,
     handlers::{health, redirect, shorten},
-    repository::PostgresRepository, // Changed from InMemoryRepository
+    repository::PostgresRepository,
     state::AppState,
 };
 
@@ -33,7 +34,7 @@ async fn main() {
         .with(tracing_subscriber::fmt::layer())
         .init();
 
-    tracing::info!("Starting URL shortener application..."); // Our first log!
+    tracing::info!("Starting URL shortener application...");
 
     let config = AppConfig::new();
 
@@ -56,9 +57,7 @@ async fn main() {
     let repository = Arc::new(PostgresRepository::new(pool));
 
     tracing::info!("Connecting to Redis...");
-    let redis_client = redis::Client::open(config.redis_url.clone())
-        .expect("Invalid Redis URL");
-
+    let redis_client = redis::Client::open(config.redis_url.clone()).expect("Invalid Redis URL");
     let redis_conn = redis_client
         .get_multiplexed_async_connection()
         .await
@@ -70,17 +69,24 @@ async fn main() {
         redis: redis_conn,
     };
 
+    // 2. Initialize the Prometheus metric layer and the handle to read the metrics
+    let (prometheus_layer, metric_handle) = PrometheusMetricLayer::pair();
+
     let app = Router::new()
         .route("/health", get(health))
         .route("/shorten", post(shorten))
         .route("/{code}", get(redirect))
+        // 3. Expose the metrics endpoint
+        .route("/metrics", get(|| async move { metric_handle.render() }))
+        // 4. Attach the middleware layer to the router
+        .layer(prometheus_layer)
         .with_state(state);
 
     let listener = tokio::net::TcpListener::bind(&config.server_addr)
         .await
         .unwrap();
 
-    println!("server running on {}", config.base_url);
+    tracing::info!("server running on {}", config.base_url);
 
     axum::serve(listener, app).await.unwrap();
 }

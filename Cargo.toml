@@ -16,3 +16,4 @@ dotenvy = "0.15"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 redis = { version = "0.25", features = ["tokio-comp"] }
+axum-prometheus = "0.10.0"
